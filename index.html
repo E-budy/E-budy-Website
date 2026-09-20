@@ -716,6 +716,41 @@
         border-radius: 14px;
       }
 
+      .team-slider {
+        touch-action: pan-y;
+        user-select: none;
+        cursor: grab;
+      }
+
+      .team-slider.is-dragging {
+        cursor: grabbing;
+      }
+
+      .team-socials {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        margin-top: 22px;
+      }
+
+      .team-socials a {
+        display: inline-flex;
+        align-items: center;
+        gap: 7px;
+        padding: 8px 11px;
+        border: 1px solid rgba(255, 255, 255, 0.16);
+        border-radius: 7px;
+        color: #dbe6fe;
+        font-size: 12px;
+        font-weight: 600;
+        transition: background 0.2s ease, color 0.2s ease;
+      }
+
+      .team-socials a:hover {
+        color: #fff;
+        background: rgba(255, 255, 255, 0.1);
+      }
+
       .team-track {
         display: flex;
         transition: transform 0.6s cubic-bezier(0.65, 0, 0.35, 1);
@@ -3119,6 +3154,12 @@
           <a href="#contact" data-testid="footer-contact-link">Contact</a>
         </nav>
 
+        <div class="team-socials" aria-label="Social media links">
+          <a href="https://www.instagram.com/electronic.budy?stkn=a2dyNjRydW96NmR3" target="_blank" rel="noopener noreferrer" aria-label="E budy on Instagram"><span aria-hidden="true">◎</span> Instagram</a>
+          <a href="https://youtube.com/@ebudy-x5z?si=SQL7GneYj6i9MkpG" target="_blank" rel="noopener noreferrer" aria-label="E budy on YouTube"><span aria-hidden="true">▶</span> YouTube</a>
+          <a href="https://www.linkedin.com/in/e-budy-0a9760434?utm_source=share_via&utm_content=profile&utm_medium=member_android" target="_blank" rel="noopener noreferrer" aria-label="E budy on LinkedIn"><span aria-hidden="true">in</span> LinkedIn</a>
+        </div>
+
         <div class="footer-action">
           <!-- WhatsApp number: +91 7974367359 -->
           <a
@@ -3228,16 +3269,20 @@
         // at the end of the track so the loop feels seamless.
         // ---------------------------------------------------------------
         var track = document.getElementById("teamTrack");
+        var slider = document.querySelector(".team-slider");
         var dotsWrap = document.getElementById("teamDots");
 
-        if (track) {
-          var realSlideCount = track.children.length - 1; // excludes the clone
+        if (track && slider) {
+          var realSlideCount = track.children.length - 1;
           var dots = dotsWrap ? dotsWrap.querySelectorAll("span") : [];
           var currentIndex = 0;
           var slideIntervalMs = 4000;
-          var reducedMotion = window.matchMedia(
-            "(prefers-reduced-motion: reduce)"
-          ).matches;
+          var slideTimer = null;
+          var reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+          var pointerStartX = 0;
+          var pointerDeltaX = 0;
+          var isDragging = false;
+          var activePointerId = null;
 
           function setDots(realIndex) {
             dots.forEach(function (dot, i) {
@@ -3245,33 +3290,95 @@
             });
           }
 
+          function render(index, animate) {
+            track.style.transition = animate ? "transform 0.6s cubic-bezier(0.65, 0, 0.35, 1)" : "none";
+            track.style.transform = "translateX(-" + index * 100 + "%)";
+            setDots(index % realSlideCount);
+          }
+
           function goToNextSlide() {
             currentIndex += 1;
-            track.style.transition = "transform 0.6s cubic-bezier(0.65, 0, 0.35, 1)";
-            track.style.transform = "translateX(-" + currentIndex * 100 + "%)";
-
-            var realIndex = currentIndex % realSlideCount;
-            setDots(realIndex);
-
-            // When we've slid onto the cloned first card, snap back to the
-            // real first card without a visible jump once the transition ends.
+            render(currentIndex, true);
             if (currentIndex === realSlideCount) {
-              track.addEventListener(
-                "transitionend",
-                function handleLoopReset() {
-                  track.style.transition = "none";
-                  currentIndex = 0;
-                  track.style.transform = "translateX(0%)";
-                  track.removeEventListener("transitionend", handleLoopReset);
-                },
-                { once: true }
-              );
+              track.addEventListener("transitionend", function handleLoopReset() {
+                currentIndex = 0;
+                render(currentIndex, false);
+                track.removeEventListener("transitionend", handleLoopReset);
+              }, { once: true });
             }
           }
 
-          if (!reducedMotion && realSlideCount > 1) {
-            setInterval(goToNextSlide, slideIntervalMs);
+          function goToPreviousSlide() {
+            if (currentIndex === 0) {
+              track.style.transition = "none";
+              currentIndex = realSlideCount;
+              track.style.transform = "translateX(-" + currentIndex * 100 + "%)";
+              requestAnimationFrame(function () {
+                currentIndex = realSlideCount - 1;
+                render(currentIndex, true);
+              });
+            } else {
+              currentIndex -= 1;
+              render(currentIndex, true);
+            }
           }
+
+          function startAutoSlide() {
+            if (!reducedMotion && realSlideCount > 1 && !slideTimer) {
+              slideTimer = setInterval(goToNextSlide, slideIntervalMs);
+            }
+          }
+
+          function stopAutoSlide() {
+            if (slideTimer) {
+              clearInterval(slideTimer);
+              slideTimer = null;
+            }
+          }
+
+          function finishDrag() {
+            if (!isDragging) return;
+            isDragging = false;
+            slider.classList.remove("is-dragging");
+            var threshold = slider.clientWidth * 0.18;
+            if (Math.abs(pointerDeltaX) > threshold) {
+              pointerDeltaX < 0 ? goToNextSlide() : goToPreviousSlide();
+            } else {
+              render(currentIndex, true);
+            }
+            pointerDeltaX = 0;
+            activePointerId = null;
+            window.setTimeout(startAutoSlide, 5500);
+          }
+
+          slider.addEventListener("pointerdown", function (event) {
+            if (event.pointerType === "mouse" && event.button !== 0) return;
+            stopAutoSlide();
+            isDragging = true;
+            activePointerId = event.pointerId;
+            pointerStartX = event.clientX;
+            pointerDeltaX = 0;
+            slider.classList.add("is-dragging");
+            slider.setPointerCapture(event.pointerId);
+            track.style.transition = "none";
+          });
+
+          slider.addEventListener("pointermove", function (event) {
+            if (!isDragging || event.pointerId !== activePointerId) return;
+            pointerDeltaX = event.clientX - pointerStartX;
+            var offsetPercent = (pointerDeltaX / slider.clientWidth) * 100;
+            track.style.transform = "translateX(calc(-" + currentIndex * 100 + "% + " + offsetPercent + "px))";
+          });
+
+          slider.addEventListener("pointerup", finishDrag);
+          slider.addEventListener("pointercancel", finishDrag);
+          slider.addEventListener("lostpointercapture", finishDrag);
+          slider.addEventListener("mouseenter", stopAutoSlide);
+          slider.addEventListener("mouseleave", startAutoSlide);
+          slider.addEventListener("focusin", stopAutoSlide);
+          slider.addEventListener("focusout", startAutoSlide);
+
+          if (!reducedMotion && realSlideCount > 1) startAutoSlide();
         }
       })();
     </script>
